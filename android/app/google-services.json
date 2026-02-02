@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "198455429115",
+    "project_id": "gorent-62a6a",
+    "storage_bucket": "gorent-62a6a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:198455429115:android:0299e64fe37b38ed696d5e",
+        "android_client_info": {
+          "package_name": "com.example.gorent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMYt637TH8x6xYmwelvcsKKhA5d724v9w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

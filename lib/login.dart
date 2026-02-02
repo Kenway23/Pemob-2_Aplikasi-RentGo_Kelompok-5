@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,6 +11,58 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool obscure = true;
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  Future<void> _login() async {
+    setState(() => _isLoading = true);
+
+    try {
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+
+      // Cari bagian ini di dalam fungsi _login:
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection(
+            'user',
+          ) // UBAH DARI 'users' KE 'user' (sesuai gambar database kamu)
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        String role = userDoc['role'];
+
+        if (!mounted) return;
+
+        // Pastikan rute ini sudah terdaftar di main.dart
+        if (role == 'admin') {
+          Navigator.pushReplacementNamed(context, '/admin/dashboard_admin');
+        } else if (role == 'renter') {
+          Navigator.pushReplacementNamed(context, '/renter/dashboard_renter');
+        } else {
+          Navigator.pushReplacementNamed(context, '/penyewa/dashboard_penyewa');
+        }
+      } else {
+        // Jika auth berhasil tapi data di Firestore tidak ada
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Data profil tidak ditemukan di database."),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? "Login Gagal")));
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,19 +104,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 20),
                     TextField(
+                      controller: _emailController,
                       decoration: input('Email', Icons.email),
                     ),
                     const SizedBox(height: 16),
                     TextField(
+                      controller: _passwordController,
                       obscureText: obscure,
                       decoration: input(
                         'Password',
                         Icons.lock,
                         suffix: IconButton(
                           icon: Icon(
-                            obscure
-                                ? Icons.visibility_off
-                                : Icons.visibility,
+                            obscure ? Icons.visibility_off : Icons.visibility,
                           ),
                           onPressed: () {
                             setState(() => obscure = !obscure);
@@ -75,11 +129,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pushReplacementNamed(
-                              context, '/dashboard');
-                        },
-                        child: const Text('Login'),
+                        onPressed: _isLoading ? null : _login,
+                        child: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                            : const Text('Login'),
                       ),
                     ),
                     TextButton(
