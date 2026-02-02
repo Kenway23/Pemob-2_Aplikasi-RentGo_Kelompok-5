@@ -88,7 +88,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               child: Center(
                 // Pastikan path assets sudah benar di pubspec.yaml
-                child: Image.asset('assets/motor.png', height: 150),
+                child: Image.asset('assets/img/motor.png', height: 150),
               ),
             ),
             Transform.translate(

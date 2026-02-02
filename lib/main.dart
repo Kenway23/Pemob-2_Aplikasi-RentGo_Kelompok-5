@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'splash_screen.dart';
 import 'login.dart';
-import 'register.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:gorent/register.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 // Import folder renter
@@ -83,7 +82,7 @@ class GoRentApp extends StatelessWidget {
         '/penyewa/bus_page': (context) => const BusPage(),
         '/penyewa/mobil_page': (context) => const MobilPage(),
         '/penyewa/dashboard_penyewa': (context) => const DashboardPenyewa(),
-        '/penyewa/detail': (context) => const DetailKendaraanPenyewa(),
+        '/penyewa/detail': (context) => const DetailKendaraanPenyewa(kendaraanId: '', vehicleId: '',),
 
         //Lainya
         '/about_page': (context) => const AboutApp(),

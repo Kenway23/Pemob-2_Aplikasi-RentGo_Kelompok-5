@@ -1,10 +1,155 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ProfilePenyewa extends StatelessWidget {
+class ProfilePenyewa extends StatefulWidget {
   const ProfilePenyewa({super.key});
 
+  @override
+  State<ProfilePenyewa> createState() => _ProfilePenyewaState();
+}
+
+class _ProfilePenyewaState extends State<ProfilePenyewa> {
   final Color primaryBlue = const Color(0xFF2F5586);
-  final Color shadowColor = const Color(0xFFB0C4DE);
+
+  String name = '';
+  String email = '';
+  String phone = '';
+  String address = '';
+
+  bool isLoading = true;
+
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController addressController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    getUserData();
+  }
+
+  Future<void> getUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        setState(() => isLoading = false);
+        return;
+      }
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data();
+
+        setState(() {
+          name = data?['name'] ?? '';
+          email = data?['email'] ?? user.email ?? '';
+          phone = data?['phone'] ?? '';
+          address = data?['address'] ?? '';
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          name = '';
+          email = user.email ?? '';
+          phone = '';
+          address = '';
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error ambil data profile: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> updateProfile() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        "name": nameController.text.trim(),
+        "email": email,
+        "phone": phoneController.text.trim(),
+        "address": addressController.text.trim(),
+        "role": "penyewa",
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // FIX layar gelap
+      }
+
+      await getUserData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profile berhasil diupdate")),
+      );
+    } catch (e) {
+      debugPrint("Error update profile: $e");
+    }
+  }
+
+  void showEditDialog() {
+    nameController.text = name;
+    phoneController.text = phone;
+    addressController.text = address;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Edit Profile"),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: "Nama"),
+                ),
+                TextField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(labelText: "No HP"),
+                  keyboardType: TextInputType.phone,
+                ),
+                TextField(
+                  controller: addressController,
+                  decoration: const InputDecoration(labelText: "Alamat"),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context, rootNavigator: true).pop(),
+              child: const Text("Batal"),
+            ),
+            ElevatedButton(
+              onPressed: updateProfile,
+              child: const Text("Simpan"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> logout() async {
+    await FirebaseAuth.instance.signOut();
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,161 +158,116 @@ class ProfilePenyewa extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Back', style: TextStyle(color: Colors.white, fontSize: 16)),
-        titleSpacing: 0,
-      ),
-      body: Column(
-        children: [
-          const Text(
-            'GoRent',
-            style: TextStyle(
-              color: Colors.white, 
-              fontSize: 24, 
-              fontWeight: FontWeight.bold
-            ),
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-              ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(25),
-                child: Column(
-                  children: [
-                    // Avatar & Nama
-                    const CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.transparent,
-                      child: Icon(Icons.account_circle, size: 100, color: Colors.black),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Xyz',
-                      style: TextStyle(
-                        fontSize: 22, 
-                        fontWeight: FontWeight.bold, 
-                        color: Color(0xFF103667)
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-
-                    // Menu Tombol Informasi
-                    _buildInfoButton('xyz@gmail.com'),
-                    _buildInfoButton('No. telp'),
-                    _buildInfoButton('alamat'), // Sesuai file image_044d57.png
-
-                    const SizedBox(height: 20),
-
-                    // Row Statistik (Total, Aktif, Selesai)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildSmallStatCard('Total Sewa'),
-                        _buildSmallStatCard('Sewa Aktif'),
-                        _buildSmallStatCard('Sewa Selesai'),
-                      ],
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // Tombol Log Out
-                    _buildInfoButton('Log Out', isLogout: true),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        title: const Text("Profile",
+            style: TextStyle(color: Colors.white)),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: showEditDialog,
+            icon: const Icon(Icons.edit, color: Colors.white),
+          )
         ],
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      body: isLoading
+          ? const Center(
+              child:
+                  CircularProgressIndicator(color: Colors.white))
+          : Column(
+              children: [
+                const SizedBox(height: 20),
+                const Text(
+                  'GoRent',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(30)),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(25),
+                      child: Column(
+                        children: [
+                          const CircleAvatar(
+                            radius: 50,
+                            backgroundColor: Colors.blue,
+                            child: Icon(Icons.person,
+                                size: 60,
+                                color: Colors.white),
+                          ),
+                          const SizedBox(height: 15),
+                          Text(
+                            name.isEmpty
+                                ? "Nama belum diisi"
+                                : name,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF103667),
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+                          _buildInfoCard("Email", email),
+                          _buildInfoCard("No HP", phone),
+                          _buildInfoCard("Alamat", address),
+                          const SizedBox(height: 30),
+                          ElevatedButton(
+                            onPressed: logout,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              minimumSize: const Size(
+                                  double.infinity, 50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(15),
+                              ),
+                            ),
+                            child: const Text(
+                              "Logout",
+                              style: TextStyle(
+                                  color: Colors.white),
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              ],
+            ),
     );
   }
 
-  Widget _buildInfoButton(String text, {bool isLogout = false}) {
+  Widget _buildInfoCard(String title, String value) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.symmetric(vertical: 15),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.blue.shade200, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor.withOpacity(0.5),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(
+            color: Colors.blue.shade100),
       ),
-      child: Center(
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isLogout ? Colors.black87 : const Color(0xFF2F5586),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSmallStatCard(String title) {
-    return Container(
-      width: 100,
-      height: 75,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.blue.shade100),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor.withOpacity(0.4),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 11, 
-            fontWeight: FontWeight.bold, 
-            color: Color(0xFF103667)
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8EEF5),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
-          IconButton(icon: const Icon(Icons.home_outlined), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.search), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.info_outline), onPressed: () {}),
-          IconButton(
-            icon: const Icon(Icons.person, color: Colors.purple), 
-            onPressed: () {}
+          Text(
+            title,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13),
           ),
+          const SizedBox(height: 5),
+          Text(value.isEmpty ? "-" : value),
         ],
       ),
     );
