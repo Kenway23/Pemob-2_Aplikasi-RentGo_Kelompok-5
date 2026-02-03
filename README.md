@@ -127,6 +127,6 @@ Aplikasi ini terintegrasi dengan **Firebase Firestore** sebagai media penyimpana
 
 ## 🎥 Demo Tampilan Aplikasi (GIF)
 
-![Demo Aplikasi](assets/demo/Demo_Aplikasi_UAS_GoRent)
+![Demo Aplikasi](assets/demo/Demo_Aplikasi_UAS_GoRent.gif)
 
 ---
