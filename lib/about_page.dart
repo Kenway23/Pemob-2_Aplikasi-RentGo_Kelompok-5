@@ -16,7 +16,10 @@ class AboutApp extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Back', style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: const Text(
+          'Back',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
         titleSpacing: 0,
       ),
       body: Stack(
@@ -44,7 +47,7 @@ class AboutApp extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 30),
-                
+
                 // Deskripsi Aplikasi
                 _buildSectionTitle('Deskripsi Aplikasi'),
                 _buildOutlineBox(
@@ -83,7 +86,7 @@ class AboutApp extends StatelessWidget {
                     children: [
                       const Expanded(
                         child: Text(
-                          '1.\n2.\n3.\n4.\n5.',
+                          '1.Rifki Muhamad Fauzi\n2.Akmal Yusril Fani.\n3.Riki Gusti\n4.Natalia Margaretha\n5.Nisa Silva Triana',
                           style: TextStyle(color: Colors.white, height: 1.5),
                         ),
                       ),
@@ -91,11 +94,18 @@ class AboutApp extends StatelessWidget {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white54, style: BorderStyle.none), // Placeholder kotak foto
+                          border: Border.all(
+                            color: Colors.white54,
+                            style: BorderStyle.none,
+                          ), // Placeholder kotak foto
                           color: Colors.white10,
                         ),
-                        child: const Icon(Icons.qr_code_2, color: Colors.white54, size: 40),
-                      )
+                        child: const Icon(
+                          Icons.qr_code_2,
+                          color: Colors.white54,
+                          size: 40,
+                        ),
+                      ),
                     ],
                   ),
                 ),

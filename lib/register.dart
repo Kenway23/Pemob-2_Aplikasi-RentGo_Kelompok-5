@@ -33,12 +33,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _isLoading = true);
     try {
+      print(
+        "REGISTER: Creating user with email=${_emailController.text.trim()}",
+      );
+
       // 1. Buat User di Firebase Auth
       UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
           );
+
+      print("REGISTER: User created: ${userCredential.user?.uid}");
 
       // 2. Simpan Data ke koleksi 'user' (Sesuai gambar database kamu)
       await FirebaseFirestore.instance
@@ -52,19 +58,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
             'createdAt': FieldValue.serverTimestamp(),
           });
 
+      print("REGISTER: User data saved to Firestore");
+
       if (!mounted) return;
 
-      // 3. Arahkan ke rute dashboard sesuai folder project
-      // Pastikan rute ini terdaftar di main.dart Anda
-      String route = _selectedRole == 'renter'
-          ? '/renter/dashboard_renter'
-          : '/penyewa/dashboard_penyewa';
-
-      Navigator.pushNamedAndRemoveUntil(context, route, (route) => false);
-    } on FirebaseAuthException catch (e) {
+      // 3. Redirect ke login
+      print("REGISTER: Success, redirecting to login");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Registrasi berhasil! Silakan login.")),
+      );
+      Navigator.pushReplacementNamed(context, '/login');
+    } on FirebaseAuthException catch (e, st) {
+      print("REGISTER: FirebaseAuthException: ${e.code} ${e.message}");
+      print(st);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Auth error: ${e.message ?? e.code}")),
+      );
+    } on FirebaseException catch (e, st) {
+      print("REGISTER: FirebaseException: ${e.message}");
+      print(st);
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? "Registrasi Gagal")));
+      ).showSnackBar(SnackBar(content: Text("Firebase error: ${e.message}")));
+    } catch (e, st) {
+      print("REGISTER: Exception: $e");
+      print(st);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

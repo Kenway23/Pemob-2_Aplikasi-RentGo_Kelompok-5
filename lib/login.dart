@@ -19,48 +19,71 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      UserCredential userCredential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(
-            email: _emailController.text.trim(),
-            password: _passwordController.text.trim(),
-          );
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
 
-      // Cari bagian ini di dalam fungsi _login:
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection(
-            'user',
-          ) // UBAH DARI 'users' KE 'user' (sesuai gambar database kamu)
-          .doc(userCredential.user!.uid)
-          .get();
+      print("LOGIN: auth start with email=$email");
 
-      if (userDoc.exists) {
-        String role = userDoc['role'];
-
-        if (!mounted) return;
-
-        // Pastikan rute ini sudah terdaftar di main.dart
-        if (role == 'admin') {
-          Navigator.pushReplacementNamed(context, '/admin/dashboard_admin');
-        } else if (role == 'renter') {
-          Navigator.pushReplacementNamed(context, '/renter/dashboard_renter');
-        } else {
-          Navigator.pushReplacementNamed(context, '/penyewa/dashboard_penyewa');
-        }
-      } else {
-        // Jika auth berhasil tapi data di Firestore tidak ada
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Data profil tidak ditemukan di database."),
-          ),
-        );
+      if (email.isEmpty || password.isEmpty) {
+        throw Exception("Email dan password tidak boleh kosong");
       }
-    } on FirebaseAuthException catch (e) {
+
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+
+      print("LOGIN: auth success: ${userCredential.user?.uid}");
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('user')
+          .doc(userCredential.user!.uid)
+          .get()
+          .timeout(const Duration(seconds: 10));
+
+      print("LOGIN: firestore fetched: ${userDoc.exists}");
+
+      if (!mounted) return;
+
+      if (!userDoc.exists) {
+        throw Exception("Dokumen user tidak ditemukan di Firestore");
+      }
+
+      final role = userDoc['role'];
+      print("LOGIN: role = $role");
+
+      if (role == 'admin') {
+        Navigator.pushReplacementNamed(context, '/admin/dashboard_admin');
+      } else if (role == 'renter') {
+        Navigator.pushReplacementNamed(context, '/renter/dashboard_renter');
+      } else {
+        Navigator.pushReplacementNamed(context, '/penyewa/dashboard_penyewa');
+      }
+    } on FirebaseAuthException catch (e, st) {
+      print(
+        'LOGIN: FirebaseAuthException: code=${e.code}, message=${e.message}',
+      );
+      print('Stack: $st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Auth error: ${e.message ?? e.code}')),
+      );
+    } on FirebaseException catch (e, st) {
+      print('LOGIN: FirebaseException: ${e.message}');
+      print('Stack: $st');
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message ?? "Login Gagal")));
+      ).showSnackBar(SnackBar(content: Text('Firebase error: ${e.message}')));
+    } catch (e, st) {
+      print('LOGIN: Exception: $e');
+      print('Stack: $st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

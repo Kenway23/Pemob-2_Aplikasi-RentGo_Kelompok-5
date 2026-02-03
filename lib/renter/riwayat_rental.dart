@@ -14,7 +14,7 @@ class RiwayatTransaksi extends StatelessWidget {
           children: [
             // Header dengan back button dan waktu
             _buildHeader(context),
-            
+
             // Judul
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 10),
@@ -27,7 +27,7 @@ class RiwayatTransaksi extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // List transaksi
             Expanded(
               child: Container(
@@ -73,7 +73,7 @@ class RiwayatTransaksi extends StatelessWidget {
               padding: EdgeInsets.zero,
             ),
           ),
-          
+
           // Time
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -169,7 +169,7 @@ class RiwayatTransaksi extends StatelessWidget {
       itemCount: 5,
       itemBuilder: (context, index) {
         final status = statuses[index];
-        
+
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
@@ -221,7 +221,7 @@ class RiwayatTransaksi extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 15),
-                    
+
                     // Detail Transaksi
                     Expanded(
                       child: Column(
@@ -236,7 +236,7 @@ class RiwayatTransaksi extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          
+
                           Row(
                             children: [
                               const Icon(
@@ -255,7 +255,7 @@ class RiwayatTransaksi extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          
+
                           Row(
                             children: [
                               Container(
@@ -312,6 +312,7 @@ class RiwayatTransaksi extends StatelessWidget {
   }
 
   // Bottom Navigation Bar (konsisten dengan halaman lain)
+  // Bottom Navigation Bar (konsisten dengan halaman lain)
   Widget _buildBottomNavigationBar(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
@@ -325,7 +326,7 @@ class RiwayatTransaksi extends StatelessWidget {
       ),
       child: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
-        currentIndex: 3, // Riwayat active
+        currentIndex: 4, // Riwayat aktif (index 4 dari 6 menu)
         backgroundColor: Colors.white,
         selectedItemColor: const Color(0xFF2F5586),
         unselectedItemColor: Colors.grey[600],
@@ -345,9 +346,11 @@ class RiwayatTransaksi extends StatelessWidget {
             label: 'Daftar',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Riwayat',
+            // <-- MENU CHAT BARU
+            icon: Icon(Icons.chat_outlined),
+            label: 'Chat',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outlined),
             label: 'Profil',
@@ -356,19 +359,25 @@ class RiwayatTransaksi extends StatelessWidget {
         onTap: (index) {
           switch (index) {
             case 0:
-              Navigator.pushReplacementNamed(context, '/dashboard');
+              Navigator.pushReplacementNamed(
+                context,
+                '/renter/dashboard_renter',
+              );
               break;
             case 1:
-              Navigator.pushReplacementNamed(context, '/input-data');
+              Navigator.pushReplacementNamed(context, '/renter/input_data');
               break;
             case 2:
-              Navigator.pushReplacementNamed(context, '/daftar-rental');
+              Navigator.pushReplacementNamed(context, '/renter/daftar_rental');
               break;
-            case 3:
-              // Already on riwayat
+            case 3: // <-- MENU CHAT BARU
+              Navigator.pushReplacementNamed(context, '/renter/chat_renter');
               break;
             case 4:
-              Navigator.pushReplacementNamed(context, '/profil');
+              // Already on riwayat
+              break;
+            case 5:
+              Navigator.pushReplacementNamed(context, '/renter/profil_renter');
               break;
           }
         },

@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'splash_screen.dart';
 import 'login.dart';
 import 'package:gorent/register.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 // Import folder renter
 import 'renter/dashboard_renter.dart';
-import 'renter/detail_rental.dart';
-import 'renter/riwayat_transaksi.dart';
+import 'renter/detail_rental.dart'; // DetailRental di folder renter
+import 'renter/riwayat_rental.dart';
 import 'renter/chat_renter.dart';
 import 'renter/profil_renter.dart';
-import 'renter/daftar_renter.dart';
+import 'renter/daftar_renter.dart'; // Pastikan ini ada
 import 'renter/input_data.dart';
 
 // Import dari folder penyewa
-import 'penyewa/motor_page.dart';
-import 'penyewa/bus_page.dart';
-import 'penyewa/mobil_page.dart';
 import 'penyewa/dashboard_penyewa.dart';
 import 'penyewa/detail.dart';
 import 'penyewa/riwayat_chat.dart';
@@ -34,8 +33,20 @@ import 'admin/riwayat_transaksi_admin.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Firebase.initializeApp();
+
+  // Aktifkan Firebase App Check hanya di production
+  if (!kDebugMode) {
+    try {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+        appleProvider: AppleProvider.deviceCheck,
+      );
+      print('Firebase App Check activated successfully');
+    } catch (e) {
+      print('Firebase App Check activation error: $e');
+    }
+  }
 
   runApp(const GoRentApp());
 }
@@ -49,6 +60,53 @@ class GoRentApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'GoRent',
       initialRoute: '/',
+
+      // Untuk rute yang membutuhkan parameter, gunakan onGenerateRoute
+      onGenerateRoute: (RouteSettings settings) {
+        switch (settings.name) {
+          // RUTE DETAIL RENTAL DENGAN PARAMETER
+          case '/renter/detail_rental':
+            final args = settings.arguments as Map<String, dynamic>?;
+
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (context) => DetailRental(
+                  vehicleData: args['vehicleData'] ?? {},
+                  vehicleId: args['vehicleId'] ?? '',
+                ),
+              );
+            } else {
+              // Fallback jika tidak ada arguments
+              return MaterialPageRoute(
+                builder: (context) => const Scaffold(
+                  body: Center(child: Text('Data kendaraan tidak ditemukan')),
+                ),
+              );
+            }
+
+          // RUTE LAINNYA (gunakan ini untuk rute dengan parameter)
+          case '/penyewa/detail':
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (context) => DetailKendaraanPenyewa(
+                  kendaraanId: args['kendaraanId'] ?? '',
+                  vehicleId: args['vehicleId'] ?? '',
+                ),
+              );
+            }
+            // Default ke rute dengan ID kosong
+            return MaterialPageRoute(
+              builder: (context) =>
+                  const DetailKendaraanPenyewa(kendaraanId: '', vehicleId: ''),
+            );
+
+          // Untuk semua rute lainnya yang tidak membutuhkan parameter
+          default:
+            return null; // Akan dilanjutkan ke routes biasa
+        }
+      },
+
       routes: {
         '/': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
@@ -64,7 +122,7 @@ class GoRentApp extends StatelessWidget {
 
         // Renter routes
         '/renter/dashboard_renter': (context) => const DashboardRenter(),
-        '/renter/detail_rental': (context) => DetailRental(),
+        // '/renter/detail_rental': (context) => DetailRental(), // DIHAPUS, pindah ke onGenerateRoute
         '/renter/riwayat_transaksi': (context) => const RiwayatTransaksi(),
         '/renter/riwayat_chat': (context) => const ChatRenter(),
         '/renter/profil_renter': (context) => const ProfilRenter(),
@@ -78,13 +136,10 @@ class GoRentApp extends StatelessWidget {
         '/penyewa/profil': (context) => const ProfilePenyewa(),
         '/penyewa/search_page': (context) => const SearchPage(),
         '/penyewa/rekomend': (context) => const RecommendPage(),
-        '/penyewa/motor_page': (context) => const MotorPage(),
-        '/penyewa/bus_page': (context) => const BusPage(),
-        '/penyewa/mobil_page': (context) => const MobilPage(),
         '/penyewa/dashboard_penyewa': (context) => const DashboardPenyewa(),
-        '/penyewa/detail': (context) => const DetailKendaraanPenyewa(kendaraanId: '', vehicleId: '',),
+        // '/penyewa/detail': (context) => // DIHAPUS, pindah ke onGenerateRoute
 
-        //Lainya
+        // Lainnya
         '/about_page': (context) => const AboutApp(),
       },
     );

@@ -129,13 +129,16 @@ class DashboardRenter extends StatelessWidget {
                 const SizedBox(height: 8),
                 const Text(
                   'Mulai sewakan',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF2F5586)),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color.fromARGB(255, 238, 238, 238),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () {
                     // NAVIGASI KE INPUT DATA
-                    Navigator.pushNamed(context, '/input-data');
+                    Navigator.pushNamed(context, '/renter/input_data');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2F5586),
@@ -241,7 +244,7 @@ class DashboardRenter extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.pushNamed(context, '/riwayat');
+                  Navigator.pushNamed(context, '/renter/riwayat');
                 },
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
@@ -262,7 +265,7 @@ class DashboardRenter extends StatelessWidget {
           // Riwayat Card
           GestureDetector(
             onTap: () {
-              Navigator.pushNamed(context, '/riwayat');
+              Navigator.pushNamed(context, '/renter/riwayat');
             },
             child: Container(
               padding: const EdgeInsets.all(16),
@@ -382,7 +385,7 @@ class DashboardRenter extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.pushNamed(context, '/daftar-rental');
+                  Navigator.pushNamed(context, '/renter/daftar_rental');
                 },
                 style: TextButton.styleFrom(
                   padding: EdgeInsets.zero,
@@ -523,11 +526,7 @@ class DashboardRenter extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 14,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.location_on, size: 14, color: Colors.grey),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -564,13 +563,14 @@ class DashboardRenter extends StatelessWidget {
                     // Navigasi ke Detail Rental dengan membawa data
                     Navigator.pushNamed(
                       context,
-                      '/detail-rental',
+                      '/renter/detail_rental',
                       arguments: {
                         'name': title,
                         'location': location,
                         'price': price,
                         'status': status,
-                        'statusColor': statusColor.value, // Convert Color to int
+                        'statusColor':
+                            statusColor.value, // Convert Color to int
                         'isCar': isCar,
                       },
                     );
@@ -631,14 +631,9 @@ class DashboardRenter extends StatelessWidget {
             icon: Icon(Icons.add_circle_outline),
             label: 'Input Data',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: 'Daftar',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Riwayat',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Daftar'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
+          BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             label: 'Profil',
@@ -650,16 +645,19 @@ class DashboardRenter extends StatelessWidget {
               // Already on dashboard
               break;
             case 1:
-              Navigator.pushNamed(context, '/input-data');
+              Navigator.pushNamed(context, '/renter/input_data');
               break;
             case 2:
-              Navigator.pushNamed(context, '/daftar-rental');
+              Navigator.pushNamed(context, '/renter/daftar_rental');
               break;
             case 3:
-              Navigator.pushNamed(context, '/riwayat');
+              Navigator.pushNamed(context, '/renter/chat');
               break;
             case 4:
-              Navigator.pushNamed(context, '/profil');
+              Navigator.pushNamed(context, '/renter/riwayat_rental');
+              break;
+            case 5:
+              Navigator.pushNamed(context, '/renter/profil_renter');
               break;
           }
         },
