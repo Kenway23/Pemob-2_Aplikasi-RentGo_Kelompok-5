@@ -966,13 +966,13 @@ class _ProfilRenterState extends State<ProfilRenter> {
               Navigator.pushReplacementNamed(context, '/renter/daftar_rental');
               break;
             case 3: // <-- MENU CHAT BARU
-              Navigator.pushReplacementNamed(context, '/renter/chat_renter');
-              break;
-            case 4:
               Navigator.pushReplacementNamed(
                 context,
-                '/renter/riwayat_transaksi',
+                '/renter/riwayat_chat_renter',
               );
+              break;
+            case 4:
+              Navigator.pushReplacementNamed(context, '/renter/riwayat_rental');
               break;
             case 5:
               // Already on profile

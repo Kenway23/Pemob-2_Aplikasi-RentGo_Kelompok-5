@@ -871,13 +871,10 @@ class _DaftarRentalState extends State<DaftarRental> {
               // Already on daftar rental
               break;
             case 3:
-              Navigator.pushReplacementNamed(context, '/renter/chat_renter');
+              Navigator.pushReplacementNamed(context, '/renter/riwayat_chat_renter');
               break;
             case 4:
-              Navigator.pushReplacementNamed(
-                context,
-                '/renter/riwayat_transaksi',
-              );
+              Navigator.pushReplacementNamed(context, '/renter/riwayat_rental');
               break;
             case 5:
               Navigator.pushReplacementNamed(context, '/renter/profil_renter');

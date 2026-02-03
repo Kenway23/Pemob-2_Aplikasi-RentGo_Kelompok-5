@@ -25,12 +25,6 @@ import 'penyewa/profil.dart';
 import 'penyewa/riwayat_chat_penyewa.dart'; // Tambahkan ini
 import 'about_page.dart';
 
-// Import dari folder admin
-import 'admin/dashboard_admin.dart';
-import 'admin/daftar_kendaraan_admin.dart';
-import 'admin/detail_sewa_admin.dart';
-import 'admin/riwayat_transaksi_admin.dart';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -154,17 +148,9 @@ class GoRentApp extends StatelessWidget {
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
 
-        // Admin routes
-        '/admin/dashboard_admin': (context) => const DashboardAdmin(),
-        '/admin/daftar_kendaraan_admin': (context) =>
-            const DaftarKendaraanAdmin(),
-        '/admin/detail_sewa_admin': (context) => const DetailSewaAdminPage(),
-        '/admin/riwayat_transaksi_admin': (context) =>
-            const RiwayatTransaksiAdmin(),
-
         // Renter routes
         '/renter/dashboard_renter': (context) => const DashboardRenter(),
-        '/renter/riwayat_transaksi': (context) => const RiwayatTransaksi(),
+        '/renter/riwayat_rental': (context) => const RiwayatTransaksiOwner(),
         '/renter/riwayat_chat_renter': (context) =>
             const RiwayatChatRenter(), // Tambahkan
         '/renter/profil_renter': (context) => const ProfilRenter(),
