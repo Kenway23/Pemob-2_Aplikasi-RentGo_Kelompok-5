@@ -1,12 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:gorent/penyewa/riwayat_chat_penyewa.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert' show base64Decode;
-import 'search_page.dart';
+import 'dart:typed_data';
 import 'daftar_rental.dart';
 import 'profil.dart';
-import 'riwayat_transaksi.dart';
+import 'riwayat_booking.dart';
+import 'detail.dart';
 
 class DashboardPenyewa extends StatefulWidget {
   const DashboardPenyewa({super.key});
@@ -29,8 +31,9 @@ class _DashboardPenyewaState extends State<DashboardPenyewa> {
   Widget build(BuildContext context) {
     final List<Widget> pages = [
       DashboardHome(primaryBlue: primaryBlue),
-      const SearchPage(),
+      const RiwayatTransaksiPenyewa(),
       const DaftarRental(),
+      const RiwayatChatPenyewa(),
       const ProfilePenyewa(),
     ];
 
@@ -47,10 +50,17 @@ class _DashboardPenyewaState extends State<DashboardPenyewa> {
             icon: Icon(Icons.dashboard),
             label: "Dashboard",
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
-            label: "Bookings",
+            label: "Riwayat Rentals",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.car_rental),
+            label: "Rentals",
+          ),
+           BottomNavigationBarItem(
+            icon: Icon(Icons.message),
+            label: "Chat",
           ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
         ],
@@ -59,10 +69,80 @@ class _DashboardPenyewaState extends State<DashboardPenyewa> {
   }
 }
 
-class DashboardHome extends StatelessWidget {
+class DashboardHome extends StatefulWidget {
   final Color primaryBlue;
 
   const DashboardHome({super.key, required this.primaryBlue});
+
+  @override
+  State<DashboardHome> createState() => _DashboardHomeState();
+}
+
+class _DashboardHomeState extends State<DashboardHome> {
+  late Stream<QuerySnapshot> _bookingsStream;
+  late Stream<QuerySnapshot> _vehiclesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeStreams();
+  }
+
+  void _initializeStreams() {
+    final user = FirebaseAuth.instance.currentUser;
+    final userId = user?.uid;
+
+    if (userId != null) {
+      // Query sederhana tanpa orderBy dulu untuk testing
+      _bookingsStream = FirebaseFirestore.instance
+          .collection("bookings")
+          .where("userId", isEqualTo: userId)
+          // .orderBy("createdAt", descending: true) // COMMENT DULU
+          .limit(5)
+          .snapshots();
+    } else {
+      _bookingsStream = const Stream.empty();
+    }
+
+    // Query untuk vehicles tanpa filter status dulu
+    _vehiclesStream = FirebaseFirestore.instance
+        .collection("vehicles")
+        // .where("status", isEqualTo: "available") // COMMENT DULU
+        .limit(3)
+        .snapshots();
+  }
+
+  String _parseAndFormatHarga(dynamic harga) {
+    if (harga == null) return "Rp 0";
+
+    if (harga is String) {
+      if (harga.startsWith('Rp')) return harga;
+
+      String cleanHarga = harga
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .replaceAll('Rp', '')
+          .replaceAll(' ', '')
+          .trim();
+
+      try {
+        int parsed = int.parse(cleanHarga);
+        return "Rp ${NumberFormat().format(parsed)}";
+      } catch (e) {
+        return "Rp $harga";
+      }
+    }
+
+    if (harga is int) {
+      return "Rp ${NumberFormat().format(harga)}";
+    }
+
+    if (harga is double) {
+      return "Rp ${NumberFormat().format(harga.toInt())}";
+    }
+
+    return "Rp 0";
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,702 +150,711 @@ class DashboardHome extends StatelessWidget {
     final userId = user?.uid;
 
     return Scaffold(
-      backgroundColor: primaryBlue,
-      body: Column(
-        children: [
-          const SizedBox(height: 40),
-
-          /// HEADER DENGAN LOGO
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
+      backgroundColor: widget.primaryBlue,
+      body: SafeArea(
+        child: Column(
+          children: [
+            /// HEADER
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.directions_car,
+                          color: widget.primaryBlue,
+                          size: 24,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.two_wheeler,
-                        color: primaryBlue,
-                        size: 24,
+                      const SizedBox(width: 10),
+                      const Text(
+                        'GoRent',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'GoRent',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  onPressed: () {
-                    // Notification action
-                  },
-                  icon: const Icon(
-                    Icons.notifications,
-                    color: Colors.white,
-                    size: 28,
+                    ],
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          /// WHITE PANEL
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.notifications,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ],
               ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    /// PROFILE SECTION
-                    StreamBuilder<DocumentSnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(userId)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        String name = "User";
-                        String email = user?.email ?? "";
-                        String role = "penyewa";
-                        String? photoBase64;
+            ),
 
-                        if (snapshot.hasData && snapshot.data?.exists == true) {
-                          var data =
-                              snapshot.data!.data() as Map<String, dynamic>;
-                          name = data['nama'] ?? name;
-                          email = data['email'] ?? email;
-                          role = data['role'] ?? role;
-                          photoBase64 = data['photoBase64'];
-                        }
+            /// WHITE PANEL
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      /// PROFILE SECTION
+                      StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(userId)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          String name = "Guest";
+                          String email = user?.email ?? "";
+                          String role = "penyewa";
 
-                        return Card(
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                // PROFILE PICTURE
-                                if (photoBase64 != null &&
-                                    photoBase64.isNotEmpty)
-                                  Container(
-                                    width: 60,
-                                    height: 60,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(30),
-                                      border: Border.all(
-                                        color: primaryBlue,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(30),
-                                      child: Image.memory(
-                                        base64Decode(photoBase64),
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  )
-                                else
+                          if (snapshot.hasData &&
+                              snapshot.data?.exists == true) {
+                            var data =
+                                snapshot.data!.data() as Map<String, dynamic>;
+                            name = data['nama'] ?? name;
+                            email = data['email'] ?? email;
+                            role = data['role'] ?? role;
+                          }
+
+                          return Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
                                   CircleAvatar(
                                     radius: 30,
-                                    backgroundColor: primaryBlue,
+                                    backgroundColor: widget.primaryBlue,
                                     child: Icon(
                                       Icons.person,
                                       color: Colors.white,
                                       size: 30,
                                     ),
                                   ),
+                                  const SizedBox(width: 15),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Halo, $name!",
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: widget.primaryBlue,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          email,
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: role == 'admin'
+                                                ? Colors.red
+                                                : role == 'pemilik'
+                                                ? Colors.blue
+                                                : Colors.green,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            role.toUpperCase(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
 
-                                const SizedBox(width: 15),
+                      const SizedBox(height: 25),
 
-                                // USER INFO
-                                Expanded(
-                                  child: Column(
+                      /// STATISTICS - PERBAIKAN QUERY
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              title: "Total Booking",
+                              valueStream: userId != null
+                                  ? FirebaseFirestore.instance
+                                        .collection("bookings")
+                                        .where("userId", isEqualTo: userId)
+                                        .snapshots()
+                                        .map(
+                                          (snapshot) =>
+                                              snapshot.docs.length.toString(),
+                                        )
+                                  : Stream.value("0"),
+                              color: widget.primaryBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildStatCard(
+                              title: "Menunggu",
+                              valueStream: userId != null
+                                  ? FirebaseFirestore.instance
+                                        .collection("bookings")
+                                        .where("userId", isEqualTo: userId)
+                                        .snapshots()
+                                        .map((snapshot) {
+                                          // Filter manual di client untuk menghindari index
+                                          int pendingCount = 0;
+                                          for (var doc in snapshot.docs) {
+                                            final data =
+                                                doc.data()
+                                                    as Map<String, dynamic>;
+                                            final status =
+                                                data['status']
+                                                    ?.toString()
+                                                    .toLowerCase() ??
+                                                '';
+                                            if (status == 'pending' ||
+                                                status == 'menunggu') {
+                                              pendingCount++;
+                                            }
+                                          }
+                                          return pendingCount.toString();
+                                        })
+                                  : Stream.value("0"),
+                              color: Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildStatCard(
+                              title: "Selesai",
+                              valueStream: userId != null
+                                  ? FirebaseFirestore.instance
+                                        .collection("bookings")
+                                        .where("userId", isEqualTo: userId)
+                                        .snapshots()
+                                        .map((snapshot) {
+                                          // Filter manual di client
+                                          int completedCount = 0;
+                                          for (var doc in snapshot.docs) {
+                                            final data =
+                                                doc.data()
+                                                    as Map<String, dynamic>;
+                                            final status =
+                                                data['status']
+                                                    ?.toString()
+                                                    .toLowerCase() ??
+                                                '';
+                                            if (status == 'completed' ||
+                                                status == 'selesai') {
+                                              completedCount++;
+                                            }
+                                          }
+                                          return completedCount.toString();
+                                        })
+                                  : Stream.value("0"),
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 25),
+
+                      /// RIWAYAT BOOKING - PERBAIKAN
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Riwayat Booking Terbaru",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: widget.primaryBlue,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const RiwayatTransaksiPenyewa(),
+                                ),
+                              );
+                            },
+                            child: Text(
+                              "Lihat Semua",
+                              style: TextStyle(
+                                color: widget.primaryBlue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // STREAM UNTUK BOOKINGS - TANPA ORDERBY DULU
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _bookingsStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Center(
+                              child: CircularProgressIndicator(
+                                color: widget.primaryBlue,
+                              ),
+                            );
+                          }
+
+                          if (snapshot.hasError) {
+                            print('Booking Stream Error: ${snapshot.error}');
+                            return _buildErrorCard(
+                              "Gagal memuat booking",
+                              onRetry: () {
+                                setState(() {
+                                  _initializeStreams();
+                                });
+                              },
+                            );
+                          }
+
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return _buildEmptyBookingCard();
+                          }
+
+                          // Sorting manual di client
+                          var docs = snapshot.data!.docs.toList();
+                          docs.sort((a, b) {
+                            final aData = a.data() as Map<String, dynamic>;
+                            final bData = b.data() as Map<String, dynamic>;
+                            final aDate = aData['createdAt'] as Timestamp?;
+                            final bDate = bData['createdAt'] as Timestamp?;
+
+                            if (aDate == null && bDate == null) return 0;
+                            if (aDate == null) return 1;
+                            if (bDate == null) return -1;
+
+                            return bDate.compareTo(aDate);
+                          });
+
+                          // Ambil 5 teratas
+                          var top5 = docs.take(5).toList();
+
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: top5.length,
+                            itemBuilder: (context, index) {
+                              final doc = top5[index];
+                              final data = doc.data() as Map<String, dynamic>;
+
+                              // Format tanggal
+                              String formatDate(Timestamp? timestamp) {
+                                if (timestamp == null) return "-";
+                                return DateFormat(
+                                  'dd/MM/yy',
+                                ).format(timestamp.toDate());
+                              }
+
+                              // Ambil data
+                              final vehicleName =
+                                  data['vehicleName'] ?? 'Kendaraan';
+                              final bookingCode = data['bookingCode'] ?? 'N/A';
+                              final totalPrice = data['totalPrice'] ?? 0;
+                              final status = data['status'] ?? 'pending';
+                              final paymentStatus =
+                                  data['paymentStatus'] ?? 'unpaid';
+                              final startDate = data['startDate'] as Timestamp?;
+                              final endDate = data['endDate'] as Timestamp?;
+                              final totalDays = data['totalDays'] ?? 0;
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: Colors.grey[200]!),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(12),
+                                  leading: Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      color: widget.primaryBlue.withOpacity(
+                                        0.1,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.directions_car,
+                                      color: widget.primaryBlue,
+                                      size: 30,
+                                    ),
+                                  ),
+                                  title: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        "Hello, $name",
+                                        vehicleName,
                                         style: TextStyle(
-                                          fontSize: 18,
                                           fontWeight: FontWeight.bold,
-                                          color: primaryBlue,
+                                          fontSize: 16,
+                                          color: widget.primaryBlue,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
+                                        maxLines: 1,
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 2),
                                       Text(
-                                        email,
+                                        "Kode: $bookingCode",
                                         style: TextStyle(
+                                          fontSize: 11,
                                           color: Colors.grey[600],
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _getRoleColor(role),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          role.toUpperCase(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    /// STATISTICS CARDS
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.receipt_long,
-                            title: "Total Bookings",
-                            valueStream: userId != null
-                                ? FirebaseFirestore.instance
-                                      .collection("bookings")
-                                      .where("userId", isEqualTo: userId)
-                                      .snapshots()
-                                      .map(
-                                        (snapshot) =>
-                                            snapshot.docs.length.toString(),
-                                      )
-                                : Stream.value("0"),
-                            color: primaryBlue,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.pending_actions,
-                            title: "Pending",
-                            valueStream: userId != null
-                                ? FirebaseFirestore.instance
-                                      .collection("bookings")
-                                      .where("userId", isEqualTo: userId)
-                                      .where("status", isEqualTo: "pending")
-                                      .snapshots()
-                                      .map(
-                                        (snapshot) =>
-                                            snapshot.docs.length.toString(),
-                                      )
-                                : Stream.value("0"),
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    /// RECENT BOOKINGS SECTION
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Recent Bookings",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: primaryBlue,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const RiwayatTransaksiPenyewa(),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            "View All",
-                            style: TextStyle(
-                              color: primaryBlue,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // STREAM UNTUK BOOKINGS
-                    StreamBuilder<QuerySnapshot>(
-                      stream: userId != null
-                          ? FirebaseFirestore.instance
-                                .collection("bookings")
-                                .where("userId", isEqualTo: userId)
-                                .orderBy("createdAt", descending: true)
-                                .limit(3)
-                                .snapshots()
-                          : null,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFF2F5586),
-                            ),
-                          );
-                        }
-
-                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                          return Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[50],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[300]!),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.receipt_long,
-                                  color: Colors.grey[400],
-                                  size: 50,
-                                ),
-                                const SizedBox(height: 10),
-                                const Text(
-                                  "No bookings yet",
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    // Navigate to search page
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: primaryBlue,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    "Rent Now",
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return Column(
-                          children: snapshot.data!.docs.map((doc) {
-                            Map<String, dynamic> data =
-                                doc.data() as Map<String, dynamic>;
-
-                            // Format tanggal
-                            String formatDate(Timestamp? timestamp) {
-                              if (timestamp == null) return "-";
-                              return DateFormat(
-                                'MMM dd, yyyy',
-                              ).format(timestamp.toDate());
-                            }
-
-                            // Format currency
-                            String formatCurrency(dynamic amount) {
-                              if (amount == null) return "Rp 0";
-                              final num = amount is int
-                                  ? amount
-                                  : (amount is double ? amount.toInt() : 0);
-                              return "Rp ${NumberFormat().format(num)}";
-                            }
-
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: Colors.grey[200]!),
-                              ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.all(16),
-                                leading: Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    color: primaryBlue.withOpacity(0.1),
-                                    image: data['vehicleImage'] != null
-                                        ? DecorationImage(
-                                            image: NetworkImage(
-                                              data['vehicleImage'],
-                                            ),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
-                                  ),
-                                  child: data['vehicleImage'] == null
-                                      ? Icon(
-                                          _getVehicleIcon(data['vehicleName']),
-                                          color: primaryBlue,
-                                        )
-                                      : null,
-                                ),
-                                title: Text(
-                                  data['vehicleName'] ?? "Unknown Vehicle",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: primaryBlue,
-                                  ),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.calendar_today,
-                                          size: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          "${formatDate(data['startDate'] as Timestamp?)} - ${formatDate(data['endDate'] as Timestamp?)}",
-                                          style: TextStyle(
-                                            fontSize: 12,
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.calendar_today,
+                                            size: 12,
                                             color: Colors.grey[600],
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        // Status Badge
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _getStatusColor(
-                                              data['status'] ?? '',
-                                            ).withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _formatStatus(
-                                              data['status'] ?? 'pending',
-                                            ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            "${formatDate(startDate)} - ${formatDate(endDate)}",
                                             style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: _getStatusColor(
-                                                data['status'] ?? '',
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        // Payment Status Badge
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _getPaymentStatusColor(
-                                              data['paymentStatus'] ?? '',
-                                            ).withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _formatPaymentStatus(
-                                              data['paymentStatus'] ?? 'unpaid',
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: _getPaymentStatusColor(
-                                                data['paymentStatus'] ?? '',
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      formatCurrency(data['totalPrice']),
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: primaryBlue,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      "${data['totalDays'] ?? 0} days",
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                onTap: () {
-                                  // Navigate to booking detail
-                                  // Navigator.push(
-                                  //   context,
-                                  //   MaterialPageRoute(
-                                  //     builder: (_) => DetailBookingPenyewa(bookingId: doc.id),
-                                  //   ),
-                                  // );
-                                },
-                              ),
-                            );
-                          }).toList(),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    /// RECOMMENDED VEHICLES SECTION
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "Recommended Vehicles",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: primaryBlue,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            // Navigate to vehicles page
-                          },
-                          child: Text(
-                            "See All",
-                            style: TextStyle(
-                              color: primaryBlue,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // STREAM UNTUK RECOMMENDED VEHICLES
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection("vehicles")
-                          .limit(3)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFF2F5586),
-                            ),
-                          );
-                        }
-
-                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                          return Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[50],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[300]!),
-                            ),
-                            child: const Center(
-                              child: Text(
-                                "No vehicles available",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                          );
-                        }
-
-                        return Column(
-                          children: snapshot.data!.docs.map((doc) {
-                            Map<String, dynamic> data =
-                                doc.data() as Map<String, dynamic>;
-
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: Colors.grey[200]!),
-                              ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.all(16),
-                                leading: Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    color: primaryBlue.withOpacity(0.1),
-                                  ),
-                                  child: Icon(
-                                    data['jenis'] == 'Mobil'
-                                        ? Icons.directions_car
-                                        : Icons.two_wheeler,
-                                    color: primaryBlue,
-                                    size: 30,
-                                  ),
-                                ),
-                                title: Text(
-                                  "${data['merk']} ${data['namaKendaraan']}",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: primaryBlue,
-                                  ),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.location_on,
-                                          size: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            data['lokasi'] ?? "-",
-                                            style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: 11,
                                               color: Colors.grey[600],
                                             ),
-                                            overflow: TextOverflow.ellipsis,
                                           ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: _getStatusColor(
+                                                status,
+                                              ).withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              _formatBookingStatus(status),
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: _getStatusColor(status),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: _getPaymentStatusColor(
+                                                paymentStatus,
+                                              ).withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              _formatPaymentStatus(
+                                                paymentStatus,
+                                              ),
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: _getPaymentStatusColor(
+                                                  paymentStatus,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        _parseAndFormatHarga(totalPrice),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: widget.primaryBlue,
+                                          fontSize: 14,
                                         ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      "Plat: ${data['plat'] ?? '-'} • Tahun: ${data['tahun'] ?? '-'}",
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey[600],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        "$totalDays hari",
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () {
+                                    // Navigate to booking detail
+                                  },
                                 ),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      "Rp ${NumberFormat().format(data['hargaPerhari'] ?? 0)}",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: primaryBlue,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    const Text(
-                                      "/day",
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 25),
+
+                      /// RECOMMENDED VEHICLES
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Kendaraan Rekomendasi",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: widget.primaryBlue,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const DaftarRental(),
                                 ),
-                                onTap: () {
-                                  // Navigate to vehicle detail
-                                  // Navigator.push(
-                                  //   context,
-                                  //   MaterialPageRoute(
-                                  //     builder: (_) => DetailKendaraanPenyewa(vehicleId: doc.id),
-                                  //   ),
-                                  // );
-                                },
+                              );
+                            },
+                            child: Text(
+                              "Lihat Semua",
+                              style: TextStyle(
+                                color: widget.primaryBlue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // STREAM UNTUK VEHICLES - TANPA FILTER STATUS
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _vehiclesStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return Center(
+                              child: CircularProgressIndicator(
+                                color: widget.primaryBlue,
                               ),
                             );
-                          }).toList(),
-                        );
-                      },
-                    ),
+                          }
 
-                    const SizedBox(height: 40),
-                  ],
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey[300]!),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  "Tidak ada kendaraan tersedia",
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: snapshot.data!.docs.length,
+                            itemBuilder: (context, index) {
+                              final doc = snapshot.data!.docs[index];
+                              final data = doc.data() as Map<String, dynamic>;
+
+                              final vehicleName =
+                                  "${data['merk'] ?? ''} ${data['namaKendaraan'] ?? ''}";
+                              final price = data['hargaPerhari'] ?? 0;
+                              final location = data['lokasi'] ?? "-";
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: Colors.grey[200]!),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(12),
+                                  leading: Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      color: widget.primaryBlue.withOpacity(
+                                        0.1,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.directions_car,
+                                      color: widget.primaryBlue,
+                                      size: 30,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    vehicleName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: widget.primaryBlue,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.location_on,
+                                            size: 12,
+                                            color: Colors.grey[600],
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              location,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        _parseAndFormatHarga(price),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: widget.primaryBlue,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const Text(
+                                        "/hari",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => DetailKendaraanPenyewa(
+                                          kendaraanId: doc.id,
+                                          vehicleId: doc.id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 40),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // Helper Widget untuk Stat Card
+  // HELPER WIDGETS
   Widget _buildStatCard({
-    required IconData icon,
     required String title,
     required Stream<String> valueStream,
     required Color color,
@@ -780,21 +869,31 @@ class DashboardHome extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, color: color, size: 24),
-                const SizedBox(height: 8),
-                Text(
-                  title,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                Row(
+                  children: [
+                    Icon(_getStatIcon(title), color: color, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: color,
                   ),
@@ -807,20 +906,122 @@ class DashboardHome extends StatelessWidget {
     );
   }
 
-  // Helper functions
+  Widget _buildErrorCard(String message, {VoidCallback? onRetry}) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red, size: 40),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: TextStyle(color: Colors.red[700], fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text(
+                "Coba Lagi",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyBookingCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.receipt_long, color: Colors.grey[400], size: 50),
+          const SizedBox(height: 10),
+          Text(
+            "Belum ada booking",
+            style: TextStyle(color: Colors.grey[600], fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DaftarRental()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: widget.primaryBlue,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              "Cari Kendaraan",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // HELPER FUNCTIONS
+  IconData _getStatIcon(String title) {
+    if (title.contains("Total")) return Icons.receipt_long;
+    if (title.contains("Menunggu")) return Icons.pending_actions;
+    if (title.contains("Selesai")) return Icons.check_circle;
+    return Icons.info;
+  }
+
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'confirmed':
       case 'selesai':
+      case 'completed':
         return Colors.green;
       case 'pending':
+      case 'menunggu':
         return Colors.orange;
       case 'cancelled':
       case 'dibatalkan':
         return Colors.red;
+      case 'active':
+      case 'aktif':
+        return Colors.blue;
       default:
         return Colors.grey;
     }
+  }
+
+  String _formatBookingStatus(String status) {
+    final statusMap = {
+      'pending': 'Menunggu',
+      'confirmed': 'Dikonfirmasi',
+      'active': 'Aktif',
+      'completed': 'Selesai',
+      'cancelled': 'Dibatalkan',
+      'dibatalkan': 'Dibatalkan',
+      'selesai': 'Selesai',
+      'menunggu': 'Menunggu',
+      'aktif': 'Aktif',
+    };
+
+    return statusMap[status.toLowerCase()] ?? status;
   }
 
   Color _getPaymentStatusColor(String paymentStatus) {
@@ -829,43 +1030,33 @@ class DashboardHome extends StatelessWidget {
       case 'lunas':
         return Colors.green;
       case 'unpaid':
-      case 'belum bayar':
+      case 'belum_bayar':
         return Colors.orange;
       case 'failed':
       case 'gagal':
         return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  Color _getRoleColor(String role) {
-    switch (role.toLowerCase()) {
-      case 'admin':
-        return Colors.red;
-      case 'pemilik':
+      case 'pending':
+      case 'menunggu':
         return Colors.blue;
-      case 'penyewa':
-        return Colors.green;
+      case 'refunded':
+        return Colors.purple;
       default:
         return Colors.grey;
     }
-  }
-
-  IconData _getVehicleIcon(String? vehicleName) {
-    if (vehicleName?.toLowerCase().contains("vespa") == true ||
-        vehicleName?.toLowerCase().contains("motor") == true) {
-      return Icons.two_wheeler;
-    } else {
-      return Icons.directions_car;
-    }
-  }
-
-  String _formatStatus(String status) {
-    return status.toUpperCase();
   }
 
   String _formatPaymentStatus(String paymentStatus) {
-    return paymentStatus.toUpperCase();
+    final paymentMap = {
+      'unpaid': 'Belum Bayar',
+      'paid': 'Lunas',
+      'pending': 'Menunggu',
+      'failed': 'Gagal',
+      'refunded': 'Dikembalikan',
+      'belum_bayar': 'Belum Bayar',
+      'lunas': 'Lunas',
+      'gagal': 'Gagal',
+    };
+
+    return paymentMap[paymentStatus.toLowerCase()] ?? paymentStatus;
   }
 }

@@ -8,21 +8,21 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 
 // Import folder renter
 import 'renter/dashboard_renter.dart';
-import 'renter/detail_rental.dart'; // DetailRental di folder renter
+import 'renter/detail_rental.dart';
 import 'renter/riwayat_rental.dart';
 import 'renter/chat_renter.dart';
 import 'renter/profil_renter.dart';
-import 'renter/daftar_renter.dart'; // Pastikan ini ada
+import 'renter/daftar_renter.dart';
 import 'renter/input_data.dart';
+import 'renter/riwayat_chat_renter.dart'; // Tambahkan ini
 
 // Import dari folder penyewa
 import 'penyewa/dashboard_penyewa.dart';
 import 'penyewa/detail.dart';
-import 'penyewa/riwayat_chat.dart';
-import 'penyewa/riwayat_transaksi.dart';
+import 'penyewa/chat_penyewa.dart';
+import 'penyewa/riwayat_booking.dart';
 import 'penyewa/profil.dart';
-import 'penyewa/search_page.dart';
-import 'penyewa/rekomend.dart';
+import 'penyewa/riwayat_chat_penyewa.dart'; // Tambahkan ini
 import 'about_page.dart';
 
 // Import dari folder admin
@@ -67,7 +67,6 @@ class GoRentApp extends StatelessWidget {
           // RUTE DETAIL RENTAL DENGAN PARAMETER
           case '/renter/detail_rental':
             final args = settings.arguments as Map<String, dynamic>?;
-
             if (args != null) {
               return MaterialPageRoute(
                 builder: (context) => DetailRental(
@@ -84,7 +83,7 @@ class GoRentApp extends StatelessWidget {
               );
             }
 
-          // RUTE LAINNYA (gunakan ini untuk rute dengan parameter)
+          // RUTE DETAIL PENYEWA DENGAN PARAMETER
           case '/penyewa/detail':
             final args = settings.arguments as Map<String, dynamic>?;
             if (args != null) {
@@ -101,9 +100,52 @@ class GoRentApp extends StatelessWidget {
                   const DetailKendaraanPenyewa(kendaraanId: '', vehicleId: ''),
             );
 
-          // Untuk semua rute lainnya yang tidak membutuhkan parameter
+          // RUTE CHAT PENYEWA DENGAN PARAMETER
+          case '/penyewa/chat_penyewa':
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (context) => ChatScreen(
+                  chatRoomId: args['chatRoomId'] ?? '',
+                  otherUserId: args['otherUserId'] ?? '',
+                  otherUserName: args['otherUserName'] ?? '',
+                  vehicleId: args['vehicleId'] ?? '',
+                  vehicleName: args['vehicleName'] ?? '',
+                ),
+              );
+            }
+            // Fallback jika tidak ada arguments
+            return MaterialPageRoute(
+              builder: (context) => Scaffold(
+                appBar: AppBar(title: const Text('Chat')),
+                body: const Center(
+                  child: Text(
+                    'Tidak dapat memulai chat. Data tidak lengkap.',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ),
+            );
+
+          // RUTE CHAT RENTER DENGAN PARAMETER
+          case '/renter/chat':
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (context) => ChatRenter(
+                  chatRoomId: args['chatRoomId'] ?? '',
+                  otherUserId: args['otherUserId'] ?? '',
+                  otherUserName: args['otherUserName'] ?? '',
+                  vehicleId: args['vehicleId'] ?? '',
+                  vehicleName: args['vehicleName'] ?? '',
+                ),
+              );
+            }
+            // Jika tidak ada parameter, tampilkan ChatRenter kosong
+            return MaterialPageRoute(builder: (context) => const ChatRenter());
+
           default:
-            return null; // Akan dilanjutkan ke routes biasa
+            return null;
         }
       },
 
@@ -122,22 +164,20 @@ class GoRentApp extends StatelessWidget {
 
         // Renter routes
         '/renter/dashboard_renter': (context) => const DashboardRenter(),
-        // '/renter/detail_rental': (context) => DetailRental(), // DIHAPUS, pindah ke onGenerateRoute
         '/renter/riwayat_transaksi': (context) => const RiwayatTransaksi(),
-        '/renter/riwayat_chat': (context) => const ChatRenter(),
+        '/renter/riwayat_chat_renter': (context) =>
+            const RiwayatChatRenter(), // Tambahkan
         '/renter/profil_renter': (context) => const ProfilRenter(),
         '/renter/daftar_rental': (context) => const DaftarRental(),
         '/renter/input_data': (context) => const InputDataRenter(),
 
         // Penyewa routes
-        '/penyewa/riwayat_chat': (context) => const RiwayatChatPenyewa(),
+        '/penyewa/dashboard_penyewa': (context) => const DashboardPenyewa(),
         '/penyewa/riwayat_transaksi': (context) =>
             const RiwayatTransaksiPenyewa(),
+        '/penyewa/riwayat_chat_penyewa': (context) =>
+            const RiwayatChatPenyewa(), // Tambahkan
         '/penyewa/profil': (context) => const ProfilePenyewa(),
-        '/penyewa/search_page': (context) => const SearchPage(),
-        '/penyewa/rekomend': (context) => const RecommendPage(),
-        '/penyewa/dashboard_penyewa': (context) => const DashboardPenyewa(),
-        // '/penyewa/detail': (context) => // DIHAPUS, pindah ke onGenerateRoute
 
         // Lainnya
         '/about_page': (context) => const AboutApp(),

@@ -1,14 +1,20 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import 'package:gorent/penyewa/chat_penyewa.dart';
+import 'package:gorent/penyewa/riwayat_booking.dart';
+
 class DetailKendaraanPenyewa extends StatefulWidget {
   final String vehicleId;
+  final String kendaraanId;
+
   const DetailKendaraanPenyewa({
     super.key,
     required this.vehicleId,
-    required String kendaraanId,
+    required this.kendaraanId,
   });
 
   @override
@@ -22,6 +28,10 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
   int selectedUnits = 1;
   late Future<Map<String, dynamic>?> vehicleData;
   late Future<DocumentSnapshot> ownerData;
+  String? ownerId;
+  String? ownerName;
+  int availableUnits = 1;
+  String vehicleName = ""; // Variabel untuk menyimpan nama kendaraan
 
   @override
   void initState() {
@@ -38,12 +48,29 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
 
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
+
+        // Simpan ownerId
+        ownerId = data['ownerId'];
+
+        // Ambil jumlah unit tersedia
+        availableUnits = data['jumlahUnit'] ?? 1;
+
+        // Simpan nama kendaraan
+        vehicleName = "${data['merk']} ${data['namaKendaraan']}";
+
         // Fetch owner data
-        if (data['ownerId'] != null) {
+        if (ownerId != null) {
           ownerData = FirebaseFirestore.instance
               .collection('users')
-              .doc(data['ownerId'])
+              .doc(ownerId)
               .get();
+
+          ownerData.then((snapshot) {
+            if (snapshot.exists) {
+              final ownerDataMap = snapshot.data() as Map<String, dynamic>;
+              ownerName = ownerDataMap['nama'] ?? 'GoRent Owner';
+            }
+          });
         }
         return data;
       }
@@ -55,6 +82,76 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
   }
 
   // ===========================
+  // FUNCTION CHAT KE PEMILIK - DIPERBAIKI
+  // ===========================
+  Future<void> _startChatWithOwner(BuildContext context) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Silakan login untuk chat")),
+        );
+        return;
+      }
+
+      if (ownerId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Informasi pemilik tidak tersedia")),
+        );
+        return;
+      }
+
+      // ✅ SOLUSI: Buat chatRoomId yang konsisten dari kedua user IDs
+      final List<String> sortedIds = [currentUser.uid, ownerId!]..sort();
+      final chatRoomId = 'chat_${sortedIds[0]}_${sortedIds[1]}';
+
+      final chatRoomsRef = FirebaseFirestore.instance.collection('chatRooms');
+      final doc = await chatRoomsRef.doc(chatRoomId).get();
+
+      if (!doc.exists) {
+        // Buat chat room baru
+        await chatRoomsRef.doc(chatRoomId).set({
+          'participants': [currentUser.uid, ownerId],
+          'participantNames': {
+            currentUser.uid: currentUser.displayName ?? 'User',
+            ownerId!: ownerName ?? 'Owner',
+          },
+          'vehicleId': widget.vehicleId,
+          'vehicleName': vehicleName,
+          'lastMessage': '',
+          'lastMessageTime': Timestamp.now(),
+          'createdAt': Timestamp.now(),
+          'unreadCount': {currentUser.uid: 0, ownerId!: 0},
+        });
+      }
+
+      // ✅ NAVIGASI KE HALAMAN CHAT dengan SEMUA PARAMETER
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            chatRoomId: chatRoomId,
+            otherUserId: ownerId!,
+            otherUserName: ownerName ?? 'Owner',
+            vehicleId: widget.vehicleId,
+            vehicleName: vehicleName, // ✅ Kirim vehicleName
+          ),
+        ),
+      );
+    } catch (e) {
+      print("Error starting chat: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Gagal memulai chat: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ... (sisa kode booking dan UI tetap sama)
+  // ===========================
   // FUNCTION BOOKING FIREBASE
   // ===========================
   Future<void> _createBooking(
@@ -65,9 +162,20 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
       final user = FirebaseAuth.instance.currentUser;
 
       if (user == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Please login to book")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Silakan login untuk booking")),
+        );
+        return;
+      }
+
+      // Cek apakah unit masih tersedia
+      if (selectedUnits > availableUnits) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Hanya $availableUnits unit tersedia"),
+            backgroundColor: Colors.red,
+          ),
+        );
         return;
       }
 
@@ -75,38 +183,134 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
       final pricePerDay = vehicleData['hargaPerhari'] ?? 0;
       final totalPrice = pricePerDay * selectedDays * selectedUnits;
 
-      await FirebaseFirestore.instance.collection('bookings').add({
-        'userId': user.uid,
-        'vehicleId': widget.vehicleId,
-        'vehicleName': "${vehicleData['merk']} ${vehicleData['namaKendaraan']}",
-        'vehicleImage': vehicleData['imageUrl'] ?? '',
-        'vehiclePrice': pricePerDay,
-        'startDate': Timestamp.now(),
-        'endDate': Timestamp.fromDate(
-          DateTime.now().add(Duration(days: selectedDays)),
-        ),
-        'totalDays': selectedDays,
-        'totalPrice': totalPrice,
-        'units': selectedUnits,
-        'pickupLocation': vehicleData['lokasi'] ?? '',
-        'status': 'pending',
-        'paymentStatus': 'unpaid',
-        'createdAt': Timestamp.now(),
-        'updatedAt': Timestamp.now(),
-      });
+      // Generate booking code
+      final bookingCode =
+          'BR${DateTime.now().millisecondsSinceEpoch}${user.uid.substring(0, 3).toUpperCase()}';
 
+      // Buat booking di Firestore
+      final bookingRef = await FirebaseFirestore.instance
+          .collection('bookings')
+          .add({
+            'bookingCode': bookingCode,
+            'userId': user.uid,
+            'userName': user.displayName ?? 'User',
+            'userEmail': user.email,
+            'ownerId': ownerId,
+            'ownerName': ownerName,
+            'vehicleId': widget.vehicleId,
+            'vehicleName':
+                "${vehicleData['merk']} ${vehicleData['namaKendaraan']}",
+            'vehicleImage':
+                vehicleData['fotoBase64'] ?? vehicleData['fotoPath'] ?? '',
+            'vehiclePrice': pricePerDay,
+            'startDate': Timestamp.now(),
+            'endDate': Timestamp.fromDate(
+              DateTime.now().add(Duration(days: selectedDays)),
+            ),
+            'totalDays': selectedDays,
+            'totalPrice': totalPrice,
+            'units': selectedUnits,
+            'pickupLocation': vehicleData['lokasi'] ?? '',
+            'status':
+                'pending', // pending, confirmed, active, completed, cancelled
+            'paymentStatus': 'unpaid', // unpaid, paid, refunded
+            'paymentMethod': '', // akan diisi saat pembayaran
+            'createdAt': Timestamp.now(),
+            'updatedAt': Timestamp.now(),
+            'notes': '',
+          });
+
+      // Kurangi jumlah unit tersedia di kendaraan
+      await FirebaseFirestore.instance
+          .collection('vehicles')
+          .doc(widget.vehicleId)
+          .update({
+            'jumlahUnit': FieldValue.increment(-selectedUnits),
+            'updatedAt': Timestamp.now(),
+          });
+
+      // Buat notifikasi untuk pemilik
+      if (ownerId != null) {
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'userId': ownerId!,
+          'title': 'Booking Baru',
+          'message':
+              '${user.displayName ?? "User"} telah membooking ${vehicleData['namaKendaraan']}',
+          'type': 'booking',
+          'relatedId': bookingRef.id,
+          'isRead': false,
+          'createdAt': Timestamp.now(),
+        });
+      }
+
+      // Tampilkan konfirmasi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text("Booking Successful!"),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Booking Berhasil!",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text("Kode Booking: $bookingCode"),
+            ],
+          ),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
         ),
       );
 
-      Navigator.pop(context); // Close booking modal
-      Navigator.pop(context); // Go back to previous page
+      // Tutup modal booking
+      Navigator.pop(context);
+
+      // Tampilkan dialog konfirmasi
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Booking Berhasil"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Kode Booking: $bookingCode"),
+              const SizedBox(height: 8),
+              Text("Total: Rp ${NumberFormat().format(totalPrice)}"),
+              const SizedBox(height: 8),
+              const Text("Status: Menunggu Konfirmasi"),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Tutup dialog
+                // Navigasi ke riwayat booking
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RiwayatTransaksiPenyewa(),
+                  ),
+                );
+              },
+              child: const Text("Lihat Riwayat"),
+              style: TextButton.styleFrom(foregroundColor: primaryBlue),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
+      print("Error creating booking: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text("Gagal membuat booking: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -131,7 +335,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                 Expanded(
                   child: Center(
                     child: Text(
-                      'Vehicle not found',
+                      'Kendaraan tidak ditemukan',
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -143,14 +347,16 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
           final data = snapshot.data!;
           final vehicleName = "${data['merk']} ${data['namaKendaraan']}";
           final pricePerDay = data['hargaPerhari'] ?? 0;
-          final location = data['lokasi'] ?? 'Unknown Location';
+          final totalPrice = pricePerDay * selectedDays * selectedUnits;
+          final location = data['lokasi'] ?? 'Lokasi tidak diketahui';
           final description =
               data['deskripsi'] ??
-              'A car with high specs that are rented at an affordable price.';
+              'Mobil dengan spesifikasi tinggi yang disewakan dengan harga terjangkau.';
           final features = data['fitur']?.toString().split(',') ?? [];
           final plat = data['plat'] ?? '';
           final tahun = data['tahun'] ?? '';
           final jenis = data['jenis'] ?? 'Mobil';
+          final rating = data['rating'] ?? 5.0;
 
           return Column(
             children: [
@@ -165,7 +371,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                 child: Column(
                   children: [
                     Text(
-                      'Car Details',
+                      'Detail Kendaraan',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 24,
@@ -261,7 +467,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                                     child: Row(
                                       children: [
                                         Text(
-                                          '5.0',
+                                          rating.toStringAsFixed(1),
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             color: primaryBlue,
@@ -281,59 +487,159 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
 
                               const SizedBox(height: 20),
 
+                              /// PRICE AND AVAILABLE UNITS INFO
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: primaryBlue.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: primaryBlue.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Harga/Hari',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        Text(
+                                          'Rp ${NumberFormat().format(pricePerDay)}',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryBlue,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'Tersedia',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        Text(
+                                          '$availableUnits Unit',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 20),
+
                               /// OWNER INFO
                               FutureBuilder<DocumentSnapshot>(
                                 future: ownerData,
                                 builder: (context, ownerSnapshot) {
                                   if (ownerSnapshot.connectionState ==
                                       ConnectionState.waiting) {
-                                    return const CircularProgressIndicator();
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        color: primaryBlue,
+                                      ),
+                                    );
                                   }
 
                                   String ownerName = "GoRent Official";
+                                  String ownerPhone = "";
                                   if (ownerSnapshot.hasData &&
                                       ownerSnapshot.data!.exists) {
                                     final ownerData =
                                         ownerSnapshot.data!.data()
                                             as Map<String, dynamic>;
                                     ownerName = ownerData['nama'] ?? ownerName;
+                                    ownerPhone = ownerData['telepon'] ?? "";
                                   }
 
-                                  return Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 20,
-                                        backgroundColor: primaryBlue,
-                                        child: Icon(
-                                          Icons.person,
-                                          color: Colors.white,
+                                  return Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.grey[200]!,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 24,
+                                          backgroundColor: primaryBlue,
+                                          child: Icon(
+                                            Icons.person,
+                                            color: Colors.white,
+                                            size: 24,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            ownerName,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: primaryBlue,
-                                              fontSize: 16,
-                                            ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                ownerName,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: primaryBlue,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              if (ownerPhone.isNotEmpty) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  ownerPhone,
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                              Text(
+                                                'Pemilik Terverifikasi',
+                                                style: TextStyle(
+                                                  color: Colors.green,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                          Text(
-                                            'Verified Owner',
-                                            style: TextStyle(
-                                              color: Colors.green,
-                                              fontSize: 12,
-                                            ),
+                                        ),
+                                        IconButton(
+                                          onPressed: () {
+                                            _startChatWithOwner(context);
+                                          },
+                                          icon: Icon(
+                                            Icons.chat,
+                                            color: primaryBlue,
+                                            size: 24,
                                           ),
-                                        ],
-                                      ),
-                                      const Spacer(),
-                                      Icon(Icons.verified, color: Colors.blue),
-                                    ],
+                                          tooltip: 'Chat dengan Pemilik',
+                                        ),
+                                      ],
+                                    ),
                                   );
                                 },
                               ),
@@ -342,7 +648,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
 
                               /// CAR FEATURES TITLE
                               Text(
-                                'Car features',
+                                'Fitur Kendaraan',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
@@ -401,133 +707,141 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                                 },
                               ),
 
-                              const SizedBox(height: 30),
+                              const SizedBox(height: 40),
 
-                              /// REVIEWS SECTION
+                              /// DUAL BUTTONS: CHAT & BOOK
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () {
+                                        _startChatWithOwner(context);
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: primaryBlue,
+                                        side: BorderSide(color: primaryBlue),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.chat, size: 20),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'CHAT',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        _showBookingModal(context, data);
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: primaryBlue,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        elevation: 2,
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.calendar_today, size: 20),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'BOOKING',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 20),
+
+                              /// INFO BOOKING DETAIL
                               Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(color: Colors.grey[200]!),
-                                ),
                                 padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: primaryBlue.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: primaryBlue.withOpacity(0.1),
+                                  ),
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    Text(
+                                      'Estimasi Harga:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: primaryBlue,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
                                     Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
-                                          'Review (125)',
+                                          '${selectedUnits} unit x $selectedDays hari',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        Text(
+                                          'Rp ${NumberFormat().format(totalPrice)}',
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.bold,
                                             color: primaryBlue,
                                           ),
                                         ),
-                                        TextButton(
-                                          onPressed: () {
-                                            // Navigate to all reviews
-                                          },
-                                          child: Text(
-                                            'See All',
-                                            style: TextStyle(
-                                              color: primaryBlue,
-                                            ),
-                                          ),
-                                        ),
                                       ],
                                     ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 20,
-                                          backgroundColor: Colors.grey[200],
-                                          child: Icon(
-                                            Icons.person,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Text(
-                                                    'Mr. Xyz',
-                                                    style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color: primaryBlue,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  const Icon(
-                                                    Icons.star,
-                                                    color: Colors.amber,
-                                                    size: 16,
-                                                  ),
-                                                  Text(
-                                                    '5.0',
-                                                    style: TextStyle(
-                                                      color: primaryBlue,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                'The rental car was clean, reliable, and the service was quick and efficient.',
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: Colors.grey[600],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Klik tombol BOOKING untuk menentukan hari dan unit',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[500],
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
 
-                              const SizedBox(height: 40),
-
-                              /// BOOK BUTTON
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    _showBookingModal(context, data);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: primaryBlue,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 2,
-                                  ),
-                                  child: const Text(
-                                    'BOOK NOW',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 30),
                             ],
                           ),
                         ),
@@ -579,17 +893,25 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
     Map<String, dynamic> vehicleData,
   ) {
     final pricePerDay = vehicleData['hargaPerhari'] ?? 0;
-    final totalPrice = pricePerDay * selectedDays * selectedUnits;
-    final location = vehicleData['lokasi'] ?? 'Unknown Location';
+    int currentSelectedDays = selectedDays;
+    int currentSelectedUnits = selectedUnits;
+
+    void updateTotalPrice(StateSetter setModalState) {
+      // Update total price calculation
+      setModalState(() {});
+    }
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
+        builder: (context, setModalState) {
+          final totalPrice =
+              pricePerDay * currentSelectedDays * currentSelectedUnits;
+
           return Container(
-            height: MediaQuery.of(context).size.height * 0.75,
+            height: MediaQuery.of(context).size.height * 0.85,
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
@@ -607,7 +929,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Detail Informasi',
+                  'Detail Booking',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -629,7 +951,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'IDR ${NumberFormat().format(pricePerDay)} / 1 Day',
+                        'Rp ${NumberFormat().format(pricePerDay)} / Hari',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -638,7 +960,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '3 unit tersedia',
+                        '$availableUnits unit tersedia',
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                       ),
                     ],
@@ -651,7 +973,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                 Row(
                   children: [
                     Text(
-                      'Unit',
+                      'Jumlah Unit',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -662,16 +984,17 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                     Row(
                       children: [
                         IconButton(
-                          onPressed: selectedUnits > 1
+                          onPressed: currentSelectedUnits > 1
                               ? () {
-                                  setState(() {
-                                    selectedUnits--;
+                                  setModalState(() {
+                                    currentSelectedUnits--;
+                                    updateTotalPrice(setModalState);
                                   });
                                 }
                               : null,
                           icon: Icon(
                             Icons.remove_circle_outline,
-                            color: selectedUnits > 1
+                            color: currentSelectedUnits > 1
                                 ? primaryBlue
                                 : Colors.grey,
                           ),
@@ -680,7 +1003,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                           width: 40,
                           alignment: Alignment.center,
                           child: Text(
-                            '$selectedUnits',
+                            '$currentSelectedUnits',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -689,16 +1012,17 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                           ),
                         ),
                         IconButton(
-                          onPressed: selectedUnits < 3
+                          onPressed: currentSelectedUnits < availableUnits
                               ? () {
-                                  setState(() {
-                                    selectedUnits++;
+                                  setModalState(() {
+                                    currentSelectedUnits++;
+                                    updateTotalPrice(setModalState);
                                   });
                                 }
                               : null,
                           icon: Icon(
                             Icons.add_circle_outline,
-                            color: selectedUnits < 3
+                            color: currentSelectedUnits < availableUnits
                                 ? primaryBlue
                                 : Colors.grey,
                           ),
@@ -708,113 +1032,137 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                   ],
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
-                /// PRICE AND DAYS SELECTION
+                /// DAYS SELECTION
                 Row(
                   children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Price',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                            Text(
-                              'IDR ${NumberFormat().format(totalPrice)}',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: primaryBlue,
-                              ),
-                            ),
-                          ],
-                        ),
+                    Text(
+                      'Lama Sewa (Hari)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: primaryBlue,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.grey[300]!),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: currentSelectedDays > 1
+                              ? () {
+                                  setModalState(() {
+                                    currentSelectedDays--;
+                                    updateTotalPrice(setModalState);
+                                  });
+                                }
+                              : null,
+                          icon: Icon(
+                            Icons.remove_circle_outline,
+                            color: currentSelectedDays > 1
+                                ? primaryBlue
+                                : Colors.grey,
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Days',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
+                        Container(
+                          width: 40,
+                          alignment: Alignment.center,
+                          child: Text(
+                            '$currentSelectedDays',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: primaryBlue,
                             ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '$selectedDays',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: primaryBlue,
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      onPressed: selectedDays > 1
-                                          ? () {
-                                              setState(() {
-                                                selectedDays--;
-                                              });
-                                            }
-                                          : null,
-                                      icon: Icon(
-                                        Icons.remove,
-                                        size: 18,
-                                        color: selectedDays > 1
-                                            ? primaryBlue
-                                            : Colors.grey,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          selectedDays++;
-                                        });
-                                      },
-                                      icon: Icon(
-                                        Icons.add,
-                                        size: 18,
-                                        color: primaryBlue,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+                        IconButton(
+                          onPressed: currentSelectedDays < 30
+                              ? () {
+                                  setModalState(() {
+                                    currentSelectedDays++;
+                                    updateTotalPrice(setModalState);
+                                  });
+                                }
+                              : null,
+                          icon: Icon(
+                            Icons.add_circle_outline,
+                            color: currentSelectedDays < 30
+                                ? primaryBlue
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
+
+                /// PRICE CALCULATION DETAILS
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Harga per unit/hari:',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          Text(
+                            'Rp ${NumberFormat().format(pricePerDay)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '$currentSelectedUnits unit x $currentSelectedDays hari:',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          Text(
+                            '${currentSelectedUnits * currentSelectedDays} unit-hari',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total Biaya:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: primaryBlue,
+                            ),
+                          ),
+                          Text(
+                            'Rp ${NumberFormat().format(totalPrice)}',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
 
                 /// LOCATION
                 Container(
@@ -829,7 +1177,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Location',
+                        'Lokasi Pengambilan',
                         style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       ),
                       const SizedBox(height: 8),
@@ -839,7 +1187,7 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              location,
+                              vehicleData['lokasi'] ?? 'Lokasi tidak diketahui',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: primaryBlue,
@@ -854,11 +1202,17 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
 
                 const Spacer(),
 
-                /// BOOKING BUTTON
+                /// CONFIRM BUTTON
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
+                      // Update state variables
+                      setState(() {
+                        selectedDays = currentSelectedDays;
+                        selectedUnits = currentSelectedUnits;
+                      });
+                      // Create booking
                       _createBooking(context, vehicleData);
                     },
                     style: ElevatedButton.styleFrom(
@@ -870,13 +1224,24 @@ class _DetailKendaraanPenyewaState extends State<DetailKendaraanPenyewa> {
                       elevation: 2,
                     ),
                     child: Text(
-                      'BOOKING - IDR ${NumberFormat().format(totalPrice)}',
+                      'KONFIRMASI BOOKING - Rp ${NumberFormat().format(totalPrice)}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                /// CANCEL BUTTON
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Batal',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
                 ),
 

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
+import 'dart:io';
+import 'dart:convert';
 
 class ProfilePenyewa extends StatefulWidget {
   const ProfilePenyewa({super.key});
@@ -18,6 +21,8 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
   bool _isLoading = true;
   String _currentTime = '';
   Timer? _timer;
+  File? _selectedImage;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
@@ -25,7 +30,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     _updateTime();
     _loadUserData();
 
-    // Update waktu setiap menit
     _timer = Timer.periodic(const Duration(minutes: 1), (timer) {
       _updateTime();
     });
@@ -65,7 +69,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
           _isLoading = false;
         });
       } else {
-        // Buat user baru jika belum ada
         await FirebaseFirestore.instance
             .collection('users')
             .doc(_currentUser!.uid)
@@ -92,6 +95,90 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     }
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 70, // Sedikit dikurangi untuk ukuran file lebih kecil
+        maxWidth: 800,
+        maxHeight: 800,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+
+        // Tampilkan dialog konfirmasi
+        _showImageConfirmationDialog();
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _uploadProfileImage() async {
+    if (_currentUser == null || _selectedImage == null) return;
+
+    setState(() {
+      _isUploadingImage = true;
+    });
+
+    try {
+      // Baca file sebagai bytes
+      final bytes = await _selectedImage!.readAsBytes();
+
+      // Konversi ke base64
+      String base64Image = base64Encode(bytes);
+
+      // Tambahkan prefix (optional, bisa disesuaikan dengan format yang diinginkan)
+      final String imageType = _selectedImage!.path
+          .split('.')
+          .last
+          .toLowerCase();
+      final String mimeType = imageType == 'png' ? 'png' : 'jpeg';
+      final String base64WithPrefix =
+          'data:image/$mimeType;base64,$base64Image';
+
+      // Simpan ke Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .update({
+            'photoBase64': base64WithPrefix,
+            'photoUpdatedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+      // Update user data
+      await _loadUserData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Foto profil berhasil diperbarui'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('Error uploading image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengupload foto: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isUploadingImage = false;
+        _selectedImage = null;
+      });
+    }
+  }
+
   Future<void> _logout(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -105,6 +192,131 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
         ),
       );
     }
+  }
+
+  void _showImageConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Ubah Foto Profil',
+            style: TextStyle(
+              color: Color(0xFF103667),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF2F5586), width: 2),
+                  image: DecorationImage(
+                    image: FileImage(_selectedImage!),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Gunakan foto ini sebagai profil?',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Foto akan disimpan di database sebagai teks',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() {
+                  _selectedImage = null;
+                });
+              },
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _uploadProfileImage();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2F5586),
+              ),
+              child: const Text('Simpan'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 16),
+              const Text(
+                'Pilih Sumber Foto',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF103667),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Color(0xFF2F5586)),
+                title: const Text('Kamera'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              const Divider(height: 0),
+              ListTile(
+                leading: const Icon(
+                  Icons.photo_library,
+                  color: Color(0xFF2F5586),
+                ),
+                title: const Text('Galeri'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              const Divider(height: 0),
+              ListTile(
+                leading: const Icon(Icons.close, color: Colors.red),
+                title: const Text('Batal', style: TextStyle(color: Colors.red)),
+                onTap: () => Navigator.pop(context),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -133,23 +345,29 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
       body: SafeArea(
         child: _isLoading
             ? _buildLoadingScreen()
-            : Column(
+            : Stack(
                 children: [
-                  // Header dengan waktu dan back
-                  _buildHeader(context),
+                  Column(
+                    children: [
+                      // Header dengan waktu dan back
+                      _buildHeader(context),
 
-                  // Logo dan user info
-                  _buildUserProfile(userName, userEmail),
+                      // Logo dan user info
+                      _buildUserProfile(userName, userEmail),
 
-                  // User details section
-                  _buildUserDetails(userPhone, userAddress),
+                      // User details section
+                      _buildUserDetails(userPhone, userAddress),
 
-                  // Menu options
-                  Expanded(child: _buildMenuOptions(context)),
+                      // Menu options
+                      Expanded(child: _buildMenuOptions(context)),
+                    ],
+                  ),
+
+                  // Loading overlay untuk upload gambar
+                  if (_isUploadingImage) _buildUploadingOverlay(),
                 ],
               ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
     );
   }
 
@@ -168,14 +386,33 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     );
   }
 
-  // Header dengan waktu dan back button
+  Widget _buildUploadingOverlay() {
+    return Container(
+      color: Colors.black.withOpacity(0.5),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Menyimpan foto...',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Back button
           Container(
             width: 40,
             height: 40,
@@ -192,49 +429,28 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
             ),
             child: IconButton(
               icon: const Icon(Icons.arrow_back, size: 20),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                // Ganti dengan halaman yang ingin Anda tuju
+                // Misalnya ke dashboard
+                Navigator.pushReplacementNamed(
+                  context,
+                  '/penyewa/dashboard_penyewa',
+                );
+              },
               padding: EdgeInsets.zero,
             ),
           ),
-
-          // Time
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2F5586).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.access_time,
-                  color: Color(0xFF2F5586),
-                  size: 16,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _currentTime,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // ... sisa kode waktu tetap
         ],
       ),
     );
   }
 
-  // User profile dengan avatar
   Widget _buildUserProfile(String userName, String userEmail) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Column(
         children: [
-          // Logo GoRent
           const Column(
             children: [
               Text(
@@ -257,20 +473,44 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
 
           const SizedBox(height: 30),
 
-          // Avatar
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF2F5586), width: 3),
-            ),
-            child: _buildUserAvatar(),
+          // Avatar dengan edit button
+          Stack(
+            children: [
+              Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF2F5586), width: 3),
+                ),
+                child: _buildUserAvatar(),
+              ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: _showImagePickerOptions,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2F5586),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 16),
 
-          // User info
           Column(
             children: [
               Text(
@@ -296,31 +536,72 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
   }
 
   Widget _buildUserAvatar() {
-    // Cek jika user punya photoURL dari Firebase Auth
-    if (_currentUser?.photoURL != null) {
-      return CircleAvatar(
-        backgroundImage: NetworkImage(_currentUser!.photoURL!),
-        backgroundColor: const Color(0xFFDDE7F2),
+    // Cek jika ada fotoBase64
+    if (_userData['photoBase64'] != null &&
+        _userData['photoBase64'].isNotEmpty) {
+      try {
+        String base64String = _userData['photoBase64'];
+
+        // Handle base64 string dengan atau tanpa prefix
+        if (base64String.contains(',')) {
+          base64String = base64String.split(',').last;
+        }
+
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(base64String),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              print('Error loading base64 image: $error');
+              return _buildDefaultAvatar();
+            },
+          ),
+        );
+      } catch (e) {
+        print('Error decoding base64 image: $e');
+        return _buildDefaultAvatar();
+      }
+    }
+
+    // Cek jika ada photoUrl (fallback jika ada)
+    if (_userData['photoUrl'] != null && _userData['photoUrl'].isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          _userData['photoUrl'],
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                          loadingProgress.expectedTotalBytes!
+                    : null,
+                color: const Color(0xFF2F5586),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return _buildDefaultAvatar();
+          },
+        ),
       );
     }
 
-    // Cek jika ada foto di Firestore
-    if (_userData.containsKey('photoUrl') && _userData['photoUrl'] != null) {
-      return CircleAvatar(
-        backgroundImage: NetworkImage(_userData['photoUrl']),
-        backgroundColor: const Color(0xFFDDE7F2),
-      );
-    }
+    // Default avatar
+    return _buildDefaultAvatar();
+  }
 
-    // Default avatar dengan inisial nama
+  Widget _buildDefaultAvatar() {
     final initials = _getInitials(_userData['nama'] ?? 'User');
 
     return CircleAvatar(
       backgroundColor: const Color(0xFF2F5586),
+      radius: 70,
       child: Text(
         initials,
         style: const TextStyle(
-          fontSize: 36,
+          fontSize: 48,
           fontWeight: FontWeight.bold,
           color: Colors.white,
         ),
@@ -338,13 +619,11 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     return 'U';
   }
 
-  // User details section
   Widget _buildUserDetails(String userPhone, String userAddress) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
         children: [
-          // Phone number
           if (userPhone.isNotEmpty)
             _buildDetailCard(
               icon: Icons.phone,
@@ -355,7 +634,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
 
           const SizedBox(height: 12),
 
-          // Address
           if (userAddress.isNotEmpty)
             _buildDetailCard(
               icon: Icons.location_on,
@@ -364,7 +642,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
               color: const Color(0xFF2196F3),
             ),
 
-          // Jika tidak ada data, tampilkan tombol edit
           if (userPhone.isEmpty && userAddress.isEmpty)
             GestureDetector(
               onTap: () {
@@ -458,7 +735,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     );
   }
 
-  // Menu options
   Widget _buildMenuOptions(BuildContext context) {
     final List<Map<String, dynamic>> menuItems = [
       {
@@ -510,7 +786,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
 
         const SizedBox(height: 20),
 
-        // Logout button
         Container(
           margin: const EdgeInsets.only(bottom: 20),
           decoration: BoxDecoration(
@@ -641,78 +916,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     );
   }
 
-  // Bottom Navigation Bar (PENYEWA VERSION)
-  Widget _buildBottomNavigationBar(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: 4, // Profil aktif (index 4 dari 5 menu)
-        backgroundColor: Colors.white,
-        selectedItemColor: const Color(0xFF2F5586),
-        unselectedItemColor: Colors.grey[600],
-        selectedLabelStyle: const TextStyle(fontSize: 10),
-        unselectedLabelStyle: const TextStyle(fontSize: 10),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search_outlined),
-            label: 'Cari',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_outlined),
-            label: 'Chat',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history_outlined),
-            label: 'Riwayat',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outlined),
-            label: 'Profil',
-          ),
-        ],
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(
-                context,
-                '/penyewa/dashboard_penyewa',
-              );
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/penyewa/search_page');
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/penyewa/riwayat_chat');
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(
-                context,
-                '/penyewa/riwayat_transaksi',
-              );
-              break;
-            case 4:
-              // Already on profile
-              break;
-          }
-        },
-      ),
-    );
-  }
-
-  // Logout dialog
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -762,7 +965,6 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     );
   }
 
-  // Edit Profile Dialog
   void _showEditProfileDialog(BuildContext context) {
     final TextEditingController nameController = TextEditingController(
       text: _userData['nama'] ?? '',
@@ -781,123 +983,230 @@ class _ProfilePenyewaState extends State<ProfilePenyewa> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Edit Profil',
-            style: TextStyle(
-              color: Color(0xFF103667),
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama Lengkap',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person),
-                  ),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text(
+                'Edit Profil',
+                style: TextStyle(
+                  color: Color(0xFF103667),
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nomor Telepon',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.phone),
-                  ),
-                  keyboardType: TextInputType.phone,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Foto profil dengan edit button
+                    Stack(
+                      children: [
+                        GestureDetector(
+                          onTap: () async {
+                            final result = await showDialog<bool>(
+                              context: context,
+                              builder: (context) {
+                                return AlertDialog(
+                                  title: const Text('Ubah Foto Profil'),
+                                  content: const Text('Ubah foto profil?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Batal'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('Ya'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+
+                            if (result == true) {
+                              Navigator.pop(context); // Tutup dialog edit
+                              _showImagePickerOptions();
+                            }
+                          },
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFF2F5586),
+                                width: 2,
+                              ),
+                            ),
+                            child: _buildUserAvatar(),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: () async {
+                              final result = await showDialog<bool>(
+                                context: context,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    title: const Text('Ubah Foto Profil'),
+                                    content: const Text('Ubah foto profil?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('Batal'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text('Ya'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+
+                              if (result == true) {
+                                Navigator.pop(context); // Tutup dialog edit
+                                _showImagePickerOptions();
+                              }
+                            },
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2F5586),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Tap untuk ganti foto',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Lengkap',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: phoneController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nomor Telepon',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.phone),
+                      ),
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: addressController,
+                      decoration: const InputDecoration(
+                        labelText: 'Alamat',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.location_on),
+                      ),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Email tidak dapat diubah untuk keamanan akun',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: addressController,
-                  decoration: const InputDecoration(
-                    labelText: 'Alamat',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.location_on),
-                  ),
-                  maxLines: 3,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal'),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Email tidak dapat diubah untuk keamanan akun',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                    fontStyle: FontStyle.italic,
+                ElevatedButton(
+                  onPressed: () async {
+                    if (nameController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Nama tidak boleh kosong'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(_currentUser!.uid)
+                          .set({
+                            'nama': nameController.text,
+                            'phone': phoneController.text,
+                            'address': addressController.text,
+                            'email': _currentUser!.email,
+                            'uid': _currentUser!.uid,
+                            'role': 'penyewa',
+                            'updatedAt': FieldValue.serverTimestamp(),
+                            'createdAt':
+                                _userData['createdAt'] ??
+                                FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
+
+                      await _loadUserData();
+
+                      Navigator.pop(context);
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Profil berhasil diperbarui'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } catch (e) {
+                      print('Error updating profile: $e');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Gagal memperbarui profil'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2F5586),
                   ),
+                  child: const Text('Simpan Perubahan'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Nama tidak boleh kosong'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                  return;
-                }
-
-                try {
-                  // Update data di Firestore
-                  await FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(_currentUser!.uid)
-                      .set({
-                        'nama': nameController.text,
-                        'phone': phoneController.text,
-                        'address': addressController.text,
-                        'email': _currentUser!.email,
-                        'uid': _currentUser!.uid,
-                        'role': 'penyewa',
-                        'updatedAt': FieldValue.serverTimestamp(),
-                        'createdAt':
-                            _userData['createdAt'] ??
-                            FieldValue.serverTimestamp(),
-                      }, SetOptions(merge: true));
-
-                  // Reload data
-                  await _loadUserData();
-
-                  Navigator.pop(context);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Profil berhasil diperbarui'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } catch (e) {
-                  print('Error updating profile: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Gagal memperbarui profil'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2F5586),
-              ),
-              child: const Text('Simpan Perubahan'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
